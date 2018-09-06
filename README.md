@@ -12,7 +12,7 @@ A step by step series of examples that tell you how to get a development env run
 
 Say what the step will be
 
-```
+```java
 package co.kodika.jboss.singleton.service;
 
 import java.util.Date;
@@ -79,7 +79,7 @@ public class HATimerService implements Service<String> {
 
 ## Create an activator that installs the Service as a clustered singleton
 
-```
+```java
 package co.kodika.jboss.singleton.service;
 
 import org.jboss.as.clustering.singleton.SingletonService;
@@ -133,7 +133,7 @@ This Singleton bean must not have a remote interface and you must not reference 
 
 #### Create a Interface
 
-```
+```java
 package co.kodika.jboss.singleton.service;
 
 public interface Scheduler {
@@ -147,7 +147,7 @@ public interface Scheduler {
 
 ## Create the Singleton bean that implements the cluster-wide singleton timer
 
-```
+```java
 package co.kodika.jboss.singleton.service;
 
 import javax.annotation.Resource;
