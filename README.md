@@ -77,64 +77,125 @@ public class HATimerService implements Service<String> {
 }
 ```
 
-And repeat
+## Create an activator that installs the Service as a clustered singleton
 
 ```
-until finished
+package co.kodika.jboss.singleton.service;
+
+import org.jboss.as.clustering.singleton.SingletonService;
+import org.jboss.logging.Logger;
+import org.jboss.msc.service.DelegatingServiceContainer;
+import org.jboss.msc.service.ServiceActivator;
+import org.jboss.msc.service.ServiceActivatorContext;
+import org.jboss.msc.service.ServiceController;
+
+
+/**
+ * Service activator that installs the HATimerService as a clustered singleton service
+ * during deployment.
+ *
+ */
+public class HATimerServiceActivator implements ServiceActivator {
+    private final Logger log = Logger.getLogger(this.getClass());
+
+    @Override
+    public void activate(ServiceActivatorContext context) {
+        log.info("HATimerService will be installed!");
+
+        HATimerService service = new HATimerService();
+        SingletonService<String> singleton = new SingletonService<String>(service, HATimerService.SINGLETON_SERVICE_NAME);
+        /*
+         * To pass a chain of election policies to the singleton, for example, 
+         * to tell JGroups to prefer running the singleton on a node with a
+         * particular name, uncomment the following line:
+         */
+        // singleton.setElectionPolicy(new PreferredSingletonElectionPolicy(new SimpleSingletonElectionPolicy(), new NamePreference("node1/singleton")));
+
+        singleton.build(new DelegatingServiceContainer(context.getServiceTarget(), context.getServiceRegistry()))
+                .setInitialMode(ServiceController.Mode.ACTIVE)
+                .install()
+        ;
+    }
+}
 ```
 
-End with an example of getting some data out of the system or using it for a little demo
+### Create a ServiceActivator File
 
-## Running the tests
-
-Explain how to run the automated tests for this system
-
-### Break down into end to end tests
-
-Explain what these tests test and why
+Create a file named org.jboss.msc.service.ServiceActivator in the application's resources/META-INF/services/ directory. Add a line containing the fully qualified name of the ServiceActivator class created in the previous step.
 
 ```
-Give an example
+co.kodika.jboss.singleton.service.HATimerServiceActivator
 ```
 
-### And coding style tests
+### Create a Singleton bean that implements a timer to be used as a cluster-wide singleton timer
 
-Explain what these tests test and why
+This Singleton bean must not have a remote interface and you must not reference its local interface from another EJB in any application. This prevents a lookup by a client or other component and ensures the SingletonService has total control of the Singleton.
+
+#### Create a Interface
 
 ```
-Give an example
+package co.kodika.jboss.singleton.service;
+
+public interface Scheduler {
+
+    void initialize(String info);
+
+    void stop();
+
+}
 ```
 
-## Deployment
+## Create the Singleton bean that implements the cluster-wide singleton timer
 
-Add additional notes about how to deploy this on a live system
+```
+package co.kodika.jboss.singleton.service;
 
-## Built With
+import javax.annotation.Resource;
+import javax.ejb.ScheduleExpression;
+import javax.ejb.Singleton;
+import javax.ejb.Timeout;
+import javax.ejb.Timer;
+import javax.ejb.TimerConfig;
+import javax.ejb.TimerService;
 
-* [Dropwizard](http://www.dropwizard.io/1.0.2/docs/) - The web framework used
-* [Maven](https://maven.apache.org/) - Dependency Management
-* [ROME](https://rometools.github.io/rome/) - Used to generate RSS Feeds
+import org.jboss.logging.Logger;
 
-## Contributing
 
-Please read [CONTRIBUTING.md](https://gist.github.com/PurpleBooth/b24679402957c63ec426) for details on our code of conduct, and the process for submitting pull requests to us.
+/**
+ * A simple example to demonstrate a implementation of a cluster-wide singleton timer.
+ *
+ */
+@Singleton
+public class SchedulerBean implements Scheduler {
+    private static Logger LOGGER = Logger.getLogger(SchedulerBean.class);
+    @Resource
+    private TimerService timerService;
 
-## Versioning
+    @Timeout
+    public void scheduler(Timer timer) {
+        LOGGER.info("HASingletonTimer: Info=" + timer.getInfo());
+    }
 
-We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/your/project/tags). 
+    @Override
+    public void initialize(String info) {
+        ScheduleExpression sexpr = new ScheduleExpression();
+        // set schedule to every 10 seconds for demonstration
+        sexpr.hour("*").minute("*").second("0/10");
+        // persistent must be false because the timer is started by the HASingleton service
+        timerService.createCalendarTimer(sexpr, new TimerConfig(info, false));
+    }
 
-## Authors
+    @Override
+    public void stop() {
+        LOGGER.info("Stop all existing HASingleton timers");
+        for (Timer timer : timerService.getTimers()) {
+            LOGGER.trace("Stop HASingleton timer: " + timer.getInfo());
+            timer.cancel();
+        }
+    }
+}
+```
 
-* **Billie Thompson** - *Initial work* - [PurpleBooth](https://github.com/PurpleBooth)
+## Sources
 
-See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
-
-## Acknowledgments
-
-* Hat tip to anyone whose code was used
-* Inspiration
-* etc
+* [JBoss Red Hat](https://access.redhat.com/documentation/) - JBoss EAP 6.4
